@@ -11,11 +11,11 @@
 //#include "music.h"
 #include "MyEEprom.h"
 
-#include <PinChangeInt.h> // for RC reciver
+#include "PinChangeInt.h" // for RC reciver
 
 //#define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead - please read: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf
 //#define USEEEPROM     //uncomment to use eeprom for storing PID parameters 
-#define RCWork true
+//#define RCWork true
 
 //Rc receiver   //2 channels
 #define UP_DOWN_IN_PIN   16
