@@ -1,0 +1,8 @@
+MakerStudio.zip is the source codes of android
+
+
+app usage:
+1,pair the correct bluetooth(maybe named makerstudio) under android system setting.
+2,open the app ,it will search the have paired list,select the correct bluetooth slaver device.
+3,then the ui shows how to control balanbot,choosing the speed1&spped2 by slidebar.
+4,the functionality that adjust the parameters in the balanbot is unstable,so don't use it.
