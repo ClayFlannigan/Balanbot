@@ -63,10 +63,10 @@ uint8_t i2cData[14]; // Buffer for I2C data
 //motor  define
 #define PWM_L 6  //M1
 #define PWM_R 5   //M2
-#define DIR_L1 8
-#define DIR_L2 7
-#define DIR_R1 3
-#define DIR_R2 4
+#define DIR_R1 8
+#define DIR_R2 7
+#define DIR_L1 3
+#define DIR_L2 4
 //encoder define
 #define SPD_INT_R 11   //interrupt 
 #define SPD_PUL_R 12   
