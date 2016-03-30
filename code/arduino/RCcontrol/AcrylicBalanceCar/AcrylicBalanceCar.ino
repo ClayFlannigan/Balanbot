@@ -458,8 +458,8 @@ void Init()
   pwm = 0;pwm_l = 0;pwm_r = 0;
   Speed_Diff = 0;Speed_Diff_ALL = 0;
   
-  KA_P = 25.0;
-  KA_D = 3.5;
+  KA_P = 80.0; //originally 25
+  KA_D = 1.0; //originally 3.5
   KP_P = 30;
   KP_I = 0.34;
   K_Base = 6.7;
