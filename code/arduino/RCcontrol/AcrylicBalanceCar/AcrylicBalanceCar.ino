@@ -238,13 +238,14 @@ void PWM_Calculate()
   Position_Add += Speed_Need;  //
   
   Position_Add = constrain(Position_Add, -800, 800);
+  
 //   Serial.print(Position_AVG_Filter);  Serial.print("\t"); Serial.println(Position_Add);
 //Serial.print((Angle_Car-2 + K_Base)* KA_P);  Serial.print("\t");
-  pwm =  (Angle_Car-5 + K_Base)* KA_P   //P
+  pwm =  (Angle_Car + K_Base)* KA_P   //P
       + Gyro_Car * KA_D //D
       +  Position_Add * KP_I    //I
       +  Position_AVG_Filter * KP_P; //P
-   // Serial.println(pwm);  
+    //Serial.println(pwm);  
    
     // if(Speed_Need ==0)
    //   StopFlag = true;
@@ -458,16 +459,16 @@ void Init()
   pwm = 0;pwm_l = 0;pwm_r = 0;
   Speed_Diff = 0;Speed_Diff_ALL = 0;
   
-  KA_P = 80.0; //originally 25
-  KA_D = 1.0; //originally 3.5
-  KP_P = 30;
-  KP_I = 0.34;
-  K_Base = 6.7;
+  KA_P = 30.0;  //originally 25
+  KA_D = 3.0;   //originally 3.5
+  KP_P = 0.0;    //originally 30
+  KP_I = .1;  //originally 0.34
+  K_Base = 0.0; //originally 6.7
   
  ReadingData.KA_P = KA_P;
  ReadingData.KA_D = KA_D;
  ReadingData.KP_P = KP_P;
- ReadingData.KP_I =KP_I;
+ ReadingData.KP_I = KP_I;
  ReadingData.K_Base = K_Base;
   
   Speed_Need = 0;
@@ -644,7 +645,7 @@ int UpdateAttitude()
   
   Angle_Car = kalAngleX;   //negative backward  positive forward
   Gyro_Car = gyroXrate;
- //Serial.print(Angle_Car);Serial.print("\t");Serial.println(Gyro_Car);
+ Serial.print(Angle_Car);Serial.print("\t");Serial.println(Gyro_Car);
 
    return 1;
  }
@@ -659,7 +660,7 @@ void LEDBlink()
      blinkState = !blinkState;
    // digitalWrite(LED, blinkState);
    
-   // Serial.print("Angle_Car\t");
+    //Serial.print("Angle_Car\t");
    // Serial.println(Angle_Car);//Serial.print("\t");Serial.println(Gyro_Car);
   }  
 }
