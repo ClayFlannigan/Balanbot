@@ -36,13 +36,13 @@ uint8_t i2cData[14]; // Buffer for I2C data
 int pwm_l, pwm_r;
 
 int encCountLeft, encCountRight;  // encoder coutns
-double Position_Car;              // encoder counts
+double Location_Car;              // encoder counts
 double Angle_Car;                 // degrees
 double Gyro_Car;                  // degrees per second
 double Speed_Car;                 // encoder counts per second
 double Speed_Command;             // commanded speed
 
-double Ka,Kg,Ki,Ks,Kp;
+double Kp,Kd,Ki,Ks,Kl;
 double angle_zero;
 
 bool blinkState = false;
@@ -67,15 +67,15 @@ void setup() {
   ///init variables
   encCountLeft = 0;
   encCountRight = 0;
-  Position_Car = 0;
+  Location_Car = 0;
   Speed_Command = 0;
   
-  Ka = 50.0;  //originally 25
-  Kg = 3.5;   //originally 3.5
-  Ki = 0.1;
-  Ks = 0.0;    
-  Kp = 0.0;  
-  angle_zero = -2.0; 
+  Kp = 50.0;          // proportial gain for tilt angle
+  Kd = 3.5;           // derivative gain for tilt rate
+  Ki = 0.1;           // integral gain for tilt angle
+  Ks = 0.0;           // proportional gain for car velocity based on encoder counts
+  Kl = 0.0;           // proportional gain for car location based on encoder counts
+  angle_zero = -2.0;  // angular offset between the sensor zero tilt and the balance point of the car
 
   TWBR = ((F_CPU / 400000L) - 16) / 2; // Set I2C frequency to 400kHz
   i2cData[0] = 7; // Set the sample rate to 1000Hz - 8kHz/(7+1) = 1000Hz
@@ -133,11 +133,11 @@ void PWM_Calculate()
   angle_sum += Angle_Car;
   angle_sum = constrain(angle_sum, -500, 500);
 
-  pwm = Angle_Car * Ka                    // gain for angle
+  pwm = Angle_Car * Kp                    // gain for angle
+      + Gyro_Car * Kd                     // gain for rotation rate
       + angle_sum * Ki                    // gain for integrated angle
-      + Gyro_Car * Kg                     // gain for rotation rate
       + (Speed_Command - Speed_Car) * Ks  // gain for car speed
-      + Position_Car * Kp;                // gain for car position
+      + Location_Car * Kl;                // gain for car position
 
   pwm_r = pwm;
   pwm_l = pwm;
@@ -203,7 +203,7 @@ int updateState()
 
   double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
 
-  if(dt >= 0.001)
+  if(dt >= 0.004) // 4ms updates
   {      
     uint8_t temperatureRaw;
     
@@ -250,8 +250,8 @@ int updateState()
 
     // calculate car velocity and position from encoders
     float avgEncPos = (encCountLeft + encCountRight) * 0.5;
-    Position_Car += avgEncPos; 
-    Position_Car = constrain(Position_Car, -800, 800);
+    Location_Car += avgEncPos; 
+    Location_Car = constrain(Location_Car, -800, 800);
     Speed_Car = avgEncPos / dt; // speed in encoder counts per second
     
     encCountLeft = 0;
