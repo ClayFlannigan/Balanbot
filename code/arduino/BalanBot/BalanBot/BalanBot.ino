@@ -101,13 +101,8 @@ void setup() {
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
   // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
   // It is then converted from radians to degrees
-#ifdef RESTRICT_PITCH // Eq. 25 and 26
-  double roll  = atan2(accY, accZ) * RAD_TO_DEG;
-  double pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
-#else // Eq. 28 and 29
   double roll  = atan(accY / sqrt(accX * accX + accZ * accZ)) * RAD_TO_DEG;
   double pitch = atan2(-accX, accZ) * RAD_TO_DEG;
-#endif
 
   kalmanX.setAngle(roll);
   kalmanY.setAngle(pitch);
@@ -250,7 +245,7 @@ int updateState()
     if (gyroYangle < -180 || gyroYangle > 180)
       gyroYangle = kalAngleY;
   
-    Angle_Car = kalAngleX + angle_zero;   //negative backward, positive forward
+    Angle_Car = kalAngleX + angle_zero;
     Gyro_Car = gyroXrate;
 
     // calculate car velocity and position from encoders
