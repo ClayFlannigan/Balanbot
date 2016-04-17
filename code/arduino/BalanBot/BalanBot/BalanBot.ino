@@ -19,42 +19,41 @@
 #define SPD_INT_L 10   //interrupt 
 #define SPD_PUL_L 9
 
-#define BUZZER 13
-#define LED 13
+/* Contants */
+const double Kp = 50.0;           // proportial gain for tilt angle
+const double Kd = 3.5;            // derivative gain for tilt rate
+const double Ki = 0.1;            // integral gain for tilt angle
+const double Ks = 0.0;            // proportional gain for car velocity based on encoder counts
+const double Kl = 0.0;            // proportional gain for car location based on encoder counts
+const double maxIntegrator = 500; // maximum integrator accumulator
+const double angle_zero = -2.0;   // angular offset between the sensor zero tilt and the balance point of the car
+const double updateRate = 0.004;  // time between state/control updates
 
-/* IMU Data */
-double accX, accY, accZ;
-double gyroX, gyroY, gyroZ;
-double gyroXangle, gyroYangle; // Angle calculated using the gyro only
-double kalAngleX, kalAngleY; // Angle calculate using a Kalman filter
+typedef struct State {
+  int encCountL = 0;              // raw encoder counts
+  int encCountR = 0;              // raw encoder counts
+  int location = 0;               // position of car in encoder counts
+  double angle;                   // tilt of car in degrees
+  double gyro;                    // tilt rate of car degrees per second
+  double vel;                     // velocity of car in encoder counts per second
+  double temp;                    // temperature in degrees  
+  Kalman kalman;                  // Kalman filter for angle
+} State;
 
-uint32_t timer;
-uint32_t LEDTimer;
+typedef struct Command {
+  double vel = 0;                 // commanded speed
+  double turn = 0;                // commanded turn rate
+  int pwmL = 0;                   // raw motor command
+  int pwmR = 0;                   // raw motor command
+} Command;
 
-uint8_t i2cData[14]; // Buffer for I2C data
-
-int pwm_l, pwm_r;
-
-int encCountLeft, encCountRight;  // encoder coutns
-double Location_Car;              // encoder counts
-double Angle_Car;                 // degrees
-double Gyro_Car;                  // degrees per second
-double Speed_Car;                 // encoder counts per second
-double Speed_Command;             // commanded speed
-
-double Kp,Kd,Ki,Ks,Kl;
-double angle_zero;
-
-bool blinkState = false;
-
-Kalman kalmanX;
-Kalman kalmanY;
+State s;
+Command c;
 
 void setup() {
   Serial.begin(9600);
   Wire.begin();
 
-  pinMode(BUZZER, OUTPUT);
   pinMode(SPD_PUL_L, INPUT);
   pinMode(SPD_PUL_R, INPUT);
   pinMode(PWM_L, OUTPUT);
@@ -63,20 +62,9 @@ void setup() {
   pinMode(DIR_L2, OUTPUT);
   pinMode(DIR_R1, OUTPUT);
   pinMode(DIR_R2, OUTPUT); 
-  
-  ///init variables
-  encCountLeft = 0;
-  encCountRight = 0;
-  Location_Car = 0;
-  Speed_Command = 0;
-  
-  Kp = 50.0;          // proportial gain for tilt angle
-  Kd = 3.5;           // derivative gain for tilt rate
-  Ki = 0.1;           // integral gain for tilt angle
-  Ks = 0.0;           // proportional gain for car velocity based on encoder counts
-  Kl = 0.0;           // proportional gain for car location based on encoder counts
-  angle_zero = -2.0;  // angular offset between the sensor zero tilt and the balance point of the car
 
+  // init IMU
+  uint8_t i2cData[14];              
   TWBR = ((F_CPU / 400000L) - 16) / 2; // Set I2C frequency to 400kHz
   i2cData[0] = 7; // Set the sample rate to 1000Hz - 8kHz/(7+1) = 1000Hz
   i2cData[1] = 0x00; // Disable FSYNC and set 260 Hz Acc filtering, 256 Hz Gyro filtering, 8 KHz sampling
@@ -90,123 +78,115 @@ void setup() {
     while (1);
   }
 
-  delay(200); // Wait for sensor to stabilize
-
-  /* Set kalman and gyro initial angle */
-  while (i2cRead(0x3B, i2cData, 6));
-  accX = (i2cData[0] << 8) | i2cData[1];
-  accY = (i2cData[2] << 8) | i2cData[3];
-  accZ = (i2cData[4] << 8) | i2cData[5];
-
-  // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
-  // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
-  // It is then converted from radians to degrees
-  double roll  = atan2(accY, accZ) * RAD_TO_DEG;
-  double pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
-
-  kalmanX.setAngle(roll);
-  kalmanY.setAngle(pitch);
-  gyroXangle = roll;
-  gyroYangle = pitch;
- 
+  // encoder interrupts
   PCintPort::attachInterrupt(SPD_INT_L, Encoder_L,FALLING);
   PCintPort::attachInterrupt(SPD_INT_R, Encoder_R,FALLING);
+
+  delay(200); // Wait for sensor to stabilize
   
-  timer = micros();
-  LEDTimer = millis();  
+  updateState(true);
 }
 
 void loop() 
 {
-  if(updateState())
+  if(updateState(false))
   {                            
-        PWM_Calculate();
-        Car_Control();     
+        updatePWM();
+        commandMotors();     
   }
 }
 
-void PWM_Calculate()
+void updatePWM()
 {    
   int pwm;
-  static int angle_sum = 0;
+  static int angleSum = 0;
 
-  angle_sum += Angle_Car;
-  angle_sum = constrain(angle_sum, -500, 500);
+  angleSum += s.angle;
+  angleSum = constrain(angleSum, -maxIntegrator, maxIntegrator);
 
-  pwm = Angle_Car * Kp                    // gain for angle
-      + Gyro_Car * Kd                     // gain for rotation rate
-      + angle_sum * Ki                    // gain for integrated angle
-      + (Speed_Command - Speed_Car) * Ks  // gain for car speed
-      + Location_Car * Kl;                // gain for car position
+  pwm = s.angle * Kp                  // gain for angle
+      + s.gyro * Kd                   // gain for rotation rate
+      + angleSum * Ki                 // gain for integrated angle
+      + (c.vel - s.vel) * Ks          // gain for car speed
+      + s.location * Kl;              // gain for car position
 
-  pwm_r = pwm;
-  pwm_l = pwm;
+  c.pwmL = pwm + c.turn;
+  c.pwmR = pwm - c.turn;
 
-  Serial.print("angle_sum:");
-  Serial.print(angle_sum);
+  Serial.print("angleSum:");
+  Serial.print(angleSum);
   Serial.print(" pwm:");
   Serial.println(pwm);
 }
 
-void Car_Control()
-{  
- if (pwm_l<0)
+void commandMotors()
+{
+  uint8_t cmdL, cmdR;
+    
+  if (c.pwmL < 0)
   {
     digitalWrite(DIR_L1, HIGH);
     digitalWrite(DIR_L2, LOW);
-    pwm_l = -pwm_l;  // change to positive
+    cmdL = c.pwmL < -255 ? 255 : -c.pwmL;
   }
   else
   {
     digitalWrite(DIR_L1, LOW);
     digitalWrite(DIR_L2, HIGH);
+    cmdL = c.pwmL > 255 ? 255 : c.pwmL;
   }
-  
-  if (pwm_r<0)
+    
+  if (c.pwmR < 0)
   {
     digitalWrite(DIR_R1, LOW);
     digitalWrite(DIR_R2, HIGH);
-    pwm_r = -pwm_r;
+    cmdR = c.pwmR < -255 ? 255 : -c.pwmR;
   }
   else
   {
     digitalWrite(DIR_R1, HIGH);
     digitalWrite(DIR_R2, LOW);
+    cmdR = c.pwmR > 255 ? 255 : c.pwmR;
   }
-  if( Angle_Car > 45 || Angle_Car < -45 )
+  if(s.angle > 45 || s.angle < -45)
   {
-    pwm_l = 0;
-    pwm_r = 0;
+    cmdR = 0;
+    cmdL = 0;
   }
-  analogWrite(PWM_L, pwm_l>255? 255 : pwm_l);
-  analogWrite(PWM_R, pwm_r>255? 255 : pwm_r);
+  analogWrite(PWM_L, cmdL);
+  analogWrite(PWM_R, cmdR);
 }
 
 void Encoder_L()   //car up is positive car down is negative
 {
   if (digitalRead(SPD_PUL_L))
-    encCountLeft += 1;
+    s.encCountL += 1;
   else
-    encCountLeft -= 1;
+    s.encCountL -= 1;
 }
 
 void Encoder_R()    //car up is positive car down is negative
 {
   if (!digitalRead(SPD_PUL_R))
-    encCountRight += 1;
+    s.encCountR += 1;
   else
-    encCountRight -= 1;
+    s.encCountR -= 1;
 }
 
-int updateState()
+int updateState(bool init)
 {
+  static uint32_t timer = 0;        
+  double kalAngle;
+  double accX, accY, accZ;
+  double gyroX, gyroY, gyroZ;
+  uint8_t i2cData[14];
+  uint8_t temperatureRaw; 
+  double roll, pitch;             
+  double dt = (double)(micros() - timer) / 1000000; // time since last update
 
-  double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
-
-  if(dt >= 0.004) // 4ms updates
+  if(dt >= updateRate || init) // 4ms updates
   {      
-    uint8_t temperatureRaw;
-    
+
     /* read IMU */
     while (i2cRead(0x3B, i2cData, 14));
     accX = ((i2cData[0] << 8) | i2cData[1]);
@@ -218,57 +198,32 @@ int updateState()
     gyroZ = (i2cData[12] << 8) | i2cData[13];
 
     // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
-    // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
-    // It is then converted from radians to degrees
-    double roll  = atan2(accY, accZ) * RAD_TO_DEG;
-    double pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
+    roll  = atan2(accY, accZ) * RAD_TO_DEG;
+    pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
 
-    double gyroXrate = gyroX / 131.0; // Convert to deg/s : http://www.invensense.com/products/motion-tracking/6-axis/mpu-6050/
-    double gyroYrate = gyroY / 131.0;
-    double temperature = (double)temperatureRaw / 340.0 + 36.53;
+    s.gyro = gyroX / 131.0; // Convert to deg/s : http://www.invensense.com/products/motion-tracking/6-axis/mpu-6050/
+    s.temp = temperatureRaw / 340.0 + 36.53;
 
     // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
-    if ((roll < -90 && kalAngleX > 90) || (roll > 90 && kalAngleX < -90)) {
-      kalmanX.setAngle(roll);
-      kalAngleX = roll;
-      gyroXangle = roll;
+    if ((roll < -90 && kalAngle > 90) || (roll > 90 && kalAngle < -90) || init) {
+      s.kalman.setAngle(roll);
+      kalAngle = roll;
     } else
-      kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter
-  
-    if (abs(kalAngleX) > 90)
-      gyroYrate = -gyroYrate; // Invert rate, so it fits the restriced accelerometer reading
-    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt);
-
-    // Reset the gyro angle when it has drifted too much
-    if (gyroXangle < -180 || gyroXangle > 180)
-      gyroXangle = kalAngleX;
-    if (gyroYangle < -180 || gyroYangle > 180)
-      gyroYangle = kalAngleY;
-  
-    Angle_Car = kalAngleX + angle_zero;
-    Gyro_Car = gyroXrate;
+      kalAngle = s.kalman.getAngle(roll, s.gyro, dt); // Calculate the angle using a Kalman filter
+      
+    s.angle = kalAngle + angle_zero;
 
     // calculate car velocity and position from encoders
-    float avgEncPos = (encCountLeft + encCountRight) * 0.5;
-    Location_Car += avgEncPos; 
-    Location_Car = constrain(Location_Car, -800, 800);
-    Speed_Car = avgEncPos / dt; // speed in encoder counts per second
+    s.location += (s.encCountL + s.encCountR) / 2; 
+    s.location = constrain(s.location, -1000, 1000);
+    s.vel = (s.encCountL + s.encCountR) / 2 / dt; // speed in encoder counts per second
     
-    encCountLeft = 0;
-    encCountRight = 0;
+    s.encCountL = 0;
+    s.encCountR = 0;
 
     timer = micros();
 
    return 1;
   }
   return 0;
-}
-
-void LEDBlink()
-{
-  if((millis() - LEDTimer) > 500)
-  {
-     LEDTimer = millis();
-     blinkState = !blinkState;
-  }  
 }
