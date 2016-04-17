@@ -32,7 +32,7 @@ const double updateRate = 0.004;  // time between state/control updates
 typedef struct State {
   int encCountL = 0;              // raw encoder counts
   int encCountR = 0;              // raw encoder counts
-  int location = 0;               // position of car in encoder counts
+  int pos = 0;                    // position of car in encoder counts
   double angle;                   // tilt of car in degrees
   double gyro;                    // tilt rate of car degrees per second
   double vel;                     // velocity of car in encoder counts per second
@@ -43,6 +43,7 @@ typedef struct State {
 typedef struct Command {
   double vel = 0;                 // commanded speed
   double turn = 0;                // commanded turn rate
+  double pos = 0;                 // commanded position
   int pwmL = 0;                   // raw motor command
   int pwmR = 0;                   // raw motor command
 } Command;
@@ -108,7 +109,7 @@ void updatePWM()
       + s.gyro * Kd                   // gain for rotation rate
       + angleSum * Ki                 // gain for integrated angle
       + (c.vel - s.vel) * Ks          // gain for car speed
-      + s.location * Kl;              // gain for car position
+      + (c.pos - s.pos) * Kl;         // gain for car location
 
   c.pwmL = pwm + c.turn;
   c.pwmR = pwm - c.turn;
@@ -214,8 +215,8 @@ int updateState(bool init)
     s.angle = kalAngle + angle_zero;
 
     // calculate car velocity and position from encoders
-    s.location += (s.encCountL + s.encCountR) / 2; 
-    s.location = constrain(s.location, -1000, 1000);
+    s.pos += (s.encCountL + s.encCountR) / 2; 
+    s.pos = constrain(s.pos, -1000, 1000);
     s.vel = (s.encCountL + s.encCountR) / 2 / dt; // speed in encoder counts per second
     
     s.encCountL = 0;
