@@ -101,8 +101,8 @@ void setup() {
   // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
   // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
   // It is then converted from radians to degrees
-  double roll  = atan(accY / sqrt(accX * accX + accZ * accZ)) * RAD_TO_DEG;
-  double pitch = atan2(-accX, accZ) * RAD_TO_DEG;
+  double roll  = atan2(accY, accZ) * RAD_TO_DEG;
+  double pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
 
   kalmanX.setAngle(roll);
   kalmanY.setAngle(pitch);
@@ -220,24 +220,24 @@ int updateState()
     // Source: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf eq. 25 and eq. 26
     // atan2 outputs the value of -π to π (radians) - see http://en.wikipedia.org/wiki/Atan2
     // It is then converted from radians to degrees
-    double roll  = atan(accY / sqrt(accX * accX + accZ * accZ)) * RAD_TO_DEG;
-    double pitch = atan2(-accX, accZ) * RAD_TO_DEG;
+    double roll  = atan2(accY, accZ) * RAD_TO_DEG;
+    double pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG;
 
     double gyroXrate = gyroX / 131.0; // Convert to deg/s : http://www.invensense.com/products/motion-tracking/6-axis/mpu-6050/
     double gyroYrate = gyroY / 131.0;
     double temperature = (double)temperatureRaw / 340.0 + 36.53;
 
     // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
-    if ((pitch < -90 && kalAngleY > 90) || (pitch > 90 && kalAngleY < -90)) {
-      kalmanY.setAngle(pitch);
-      kalAngleY = pitch;
-      gyroYangle = pitch;
+    if ((roll < -90 && kalAngleX > 90) || (roll > 90 && kalAngleX < -90)) {
+      kalmanX.setAngle(roll);
+      kalAngleX = roll;
+      gyroXangle = roll;
     } else
-      kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); // Calculate the angle using a Kalman filter
-
-    if (abs(kalAngleY) > 90)
-      gyroXrate = -gyroXrate; // Invert rate, so it fits the restriced accelerometer reading
-    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter
+      kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter
+  
+    if (abs(kalAngleX) > 90)
+      gyroYrate = -gyroYrate; // Invert rate, so it fits the restriced accelerometer reading
+    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt);
 
     // Reset the gyro angle when it has drifted too much
     if (gyroXangle < -180 || gyroXangle > 180)
