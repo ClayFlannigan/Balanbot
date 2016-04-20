@@ -20,13 +20,13 @@
 #define SPD_PUL_L 9
 
 /* Contants */
-const double Kp = 50.0;           // proportial gain for tilt angle
-const double Kd = 3.5;            // derivative gain for tilt rate
-const double Ki = 0.1;            // integral gain for tilt angle
+const double Kp = 20.0;           // proportial gain for tilt angle
+const double Kd = 1.0;            // derivative gain for tilt rate
+const double Ki = 1.0;            // integral gain for tilt angle
 const double Ks = 0.0;            // proportional gain for car velocity based on encoder counts
 const double Kl = 0.0;            // proportional gain for car location based on encoder counts
-const double maxIntegrator = 500; // maximum integrator accumulator
-const double angle_zero = -2.0;   // angular offset between the sensor zero tilt and the balance point of the car
+const double maxIntegrator = 50; // maximum integrator accumulator
+const double angle_zero = 0.0;   // angular offset between the sensor zero tilt and the balance point of the car
 const double updateRate = 0.004;  // time between state/control updates
 
 typedef struct State {
@@ -116,8 +116,8 @@ void updatePWM()
 
   Serial.print("angleSum:");
   Serial.print(angleSum);
-  Serial.print(" pwm:");
-  Serial.println(pwm);
+  Serial.print(" s.pos:");
+  Serial.println(s.pos);
 }
 
 void commandMotors()
